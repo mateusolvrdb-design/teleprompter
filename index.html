@@ -1,0 +1,951 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Prompter">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Prompter Horizontal</title>
+<style>
+:root{
+  --bg:#000;
+  --panel:#151518;
+  --panel2:#1e1e23;
+  --line:rgba(255,255,255,.12);
+  --text:#f5f5f7;
+  --muted:#9a9aa3;
+  --rec:#ff3b30;
+  --hl:#ffd60a;
+  --ok:#30d158;
+  --btn:rgba(28,28,32,.78);
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+  --fs:56px;
+  --colw:72%;
+  --dim:.4;
+  --guide:28%;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%}
+body{position:fixed;inset:0}
+button,select,input,textarea{font:inherit;color:inherit}
+button{touch-action:manipulation;cursor:pointer;border:0;background:none}
+[hidden]{display:none!important}
+
+/* ---------- palco ---------- */
+#stage{position:absolute;inset:0;overflow:hidden;background:#000}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#dim{position:absolute;inset:0;background:rgba(0,0,0,var(--dim));pointer-events:none}
+#prompter{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none}
+#col{position:absolute;top:0;bottom:0;width:var(--colw);left:50%;transform:translateX(-50%);overflow:hidden;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 7%,#000 70%,transparent 86%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 7%,#000 70%,transparent 86%)}
+#col[data-side=left]{left:calc(var(--sal) + 14px);transform:none}
+#col[data-side=right]{left:auto;right:calc(var(--sar) + 110px);transform:none}
+#scroller{will-change:transform}
+#text{font-size:var(--fs);line-height:1.32;font-weight:650;letter-spacing:-.005em;color:#fff;
+  text-shadow:0 2px 10px rgba(0,0,0,.75),0 0 2px rgba(0,0,0,.9);word-wrap:break-word}
+#text.flip{transform:scaleX(-1)}
+#text p{margin:0 0 .3em}
+#text .pt{color:#dcdce3;padding-left:.85em;position:relative}
+#text .pt::before{content:"•";position:absolute;left:0;color:var(--hl)}
+#text .h{font-size:.46em;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--hl);margin:.9em 0 .35em}
+#text .cue{display:block;width:fit-content;font-size:.36em;font-weight:700;letter-spacing:.04em;padding:.2em .8em;margin:.35em 0;
+  border-radius:99px;background:rgba(255,59,48,.28);border:1px solid rgba(255,59,48,.7);text-shadow:none}
+#text .cue.hook{background:rgba(255,159,10,.25);border-color:rgba(255,159,10,.75)}
+#text hr{border:0;border-top:2px solid rgba(255,255,255,.25);margin:.5em 0}
+#text .gap{height:.45em}
+#text .gap+.gap{display:none}
+#text .empty{color:var(--muted);font-size:.6em}
+#guide{position:absolute;left:0;right:0;top:var(--guide);height:0;pointer-events:none}
+#guide::before,#guide::after{content:"";position:absolute;top:-11px;border:11px solid transparent}
+#guide::before{left:calc(var(--sal) + 2px);border-left-color:var(--hl)}
+#guide::after{right:calc(var(--sar) + 96px);border-right-color:var(--hl)}
+#guide span{position:absolute;left:calc(var(--sal) + 26px);right:calc(var(--sar) + 120px);border-top:1px dashed rgba(255,214,10,.35)}
+#prog{position:absolute;top:calc(var(--sat) + 8px);bottom:calc(var(--sab) + 84px);right:calc(var(--sar) + 100px);width:3px;
+  background:rgba(255,255,255,.12);border-radius:3px;pointer-events:none}
+#prog i{position:absolute;left:0;right:0;top:0;height:0;background:var(--hl);border-radius:3px}
+
+/* ---------- HUD ---------- */
+#hud{position:absolute;top:calc(var(--sat) + 10px);left:calc(var(--sal) + 12px);display:flex;gap:6px;flex-wrap:wrap;pointer-events:none;max-width:60%}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;background:rgba(0,0,0,.55);
+  font-size:12.5px;font-weight:700;letter-spacing:.03em;font-variant-numeric:tabular-nums;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.pill.subtle{font-weight:600;color:#d0d0d6}
+.pill.warn{color:var(--hl)}
+.dot{width:9px;height:9px;border-radius:50%;background:#777}
+#status.rec .dot{background:var(--rec);animation:blink 1s steps(2) infinite}
+#status.rec{color:#fff;background:rgba(255,59,48,.35)}
+#status.paused .dot{background:var(--hl)}
+#status.paused{color:var(--hl)}
+@keyframes blink{50%{opacity:.2}}
+
+/* ---------- trilho de gravação (direita) ---------- */
+#rail{position:absolute;right:calc(var(--sar) + 12px);top:0;bottom:0;width:80px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:14px}
+.recbtn{width:74px;height:74px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center;background:rgba(0,0,0,.25)}
+.recbtn i{display:block;width:56px;height:56px;border-radius:50%;background:var(--rec);transition:all .18s ease}
+.recbtn.stop i{width:28px;height:28px;border-radius:6px}
+.recbtn:active{transform:scale(.95)}
+.rbtn{width:52px;height:52px;border-radius:50%;background:var(--btn);display:grid;place-items:center;border:1px solid var(--line)}
+.rbtn svg{width:22px;height:22px;fill:#fff}
+.rbtn.resume svg{fill:var(--rec)}
+#recLabel{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#ddd;text-shadow:0 1px 4px #000}
+
+/* ---------- barra inferior ---------- */
+#bar{position:absolute;left:calc(var(--sal) + 10px);right:calc(var(--sar) + 104px);bottom:calc(var(--sab) + 8px);
+  display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;transition:opacity .25s}
+#bar::-webkit-scrollbar{display:none}
+.recording #bar{opacity:.55}
+.cbtn{min-width:52px;height:52px;padding:0 10px;border-radius:14px;background:var(--btn);border:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-weight:700;font-size:17px;flex:none;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.cbtn small{font-size:9.5px;font-weight:600;color:var(--muted);letter-spacing:.03em;text-transform:uppercase}
+.cbtn:active{background:rgba(255,255,255,.2)}
+.cbtn svg{width:20px;height:20px;fill:#fff}
+.grp{display:flex;align-items:center;height:52px;border-radius:14px;background:var(--btn);border:1px solid var(--line);flex:none;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.grp button{width:44px;height:100%;font-size:20px;font-weight:700}
+.grp button:active{background:rgba(255,255,255,.18);border-radius:12px}
+.grp .val{display:flex;flex-direction:column;align-items:center;min-width:50px}
+.grp .val b{font-size:16px;font-variant-numeric:tabular-nums}
+.grp .val small{font-size:9.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.cbtn.play.on{background:rgba(255,214,10,.22);border-color:rgba(255,214,10,.6)}
+
+#cd{position:absolute;inset:0;display:grid;place-items:center;font-size:160px;font-weight:800;color:#fff;
+  text-shadow:0 4px 30px rgba(0,0,0,.7);pointer-events:none;background:rgba(0,0,0,.25)}
+#camMsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(520px,80%);text-align:center;
+  background:rgba(20,20,24,.92);border:1px solid var(--line);border-radius:18px;padding:18px 20px;font-size:15px}
+#camMsg button{margin-top:12px}
+
+/* ---------- folhas (ajustes / resultado) ---------- */
+.sheet{position:fixed;inset:0;z-index:20;background:var(--panel);display:flex;flex-direction:column;
+  padding:calc(var(--sat) + 10px) calc(var(--sar) + 16px) 0 calc(var(--sal) + 16px)}
+.sheet header{display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--line);flex:none}
+.sheet header h1{font-size:19px;margin:0;flex:1;font-weight:750}
+.sheet .body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 0 calc(var(--sab) + 30px)}
+.cols{display:grid;grid-template-columns:1.15fr 1fr;gap:18px}
+@media (max-width:700px){.cols{grid-template-columns:1fr}}
+.btn{height:42px;padding:0 16px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);font-weight:650;font-size:15px;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--rec);border-color:var(--rec);color:#fff}
+.btn.green{background:var(--ok);border-color:var(--ok);color:#000}
+.btn.small{height:34px;padding:0 12px;font-size:13.5px;border-radius:10px}
+.btn:active{filter:brightness(1.25)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+textarea{width:100%;min-height:210px;height:42vh;resize:vertical;background:#0c0c0e;border:1px solid var(--line);border-radius:12px;
+  padding:12px;font-size:16px;line-height:1.45;margin-top:8px}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:4px 14px;margin-bottom:12px}
+.card h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 0 2px;font-weight:700}
+.f{display:flex;align-items:center;gap:10px;min-height:46px;border-bottom:1px solid var(--line)}
+.f:last-child{border-bottom:0}
+.f label{flex:1;font-size:15px}
+.f output{min-width:52px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:14px}
+.f input[type=range]{flex:1.3;accent-color:var(--hl)}
+.f select{background:#0c0c0e;border:1px solid var(--line);border-radius:9px;padding:6px 8px;font-size:15px;max-width:58%}
+.f input[type=checkbox]{width:22px;height:22px;accent-color:var(--ok)}
+.note{font-size:13px;color:var(--muted);margin:8px 0}
+.note b{color:var(--text)}
+.box{background:rgba(48,209,88,.1);border:1px solid rgba(48,209,88,.4);border-radius:12px;padding:10px 12px;margin-top:12px;font-size:14px}
+.box.warn{background:rgba(255,214,10,.08);border-color:rgba(255,214,10,.4)}
+
+#result .wrap{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
+@media (max-width:700px){#result .wrap{grid-template-columns:1fr}}
+#resVideo{width:100%;max-height:62vh;background:#000;border-radius:12px}
+#result .actions{display:flex;flex-direction:column;gap:10px}
+#result .actions .btn{height:50px;font-size:16px}
+#resInfo{font-size:14px;color:var(--muted);line-height:1.6}
+#resInfo b{color:var(--text)}
+
+#rotate{position:fixed;inset:0;z-index:15;background:rgba(0,0,0,.88);display:grid;place-items:center;text-align:center;padding:30px}
+#rotate div{font-size:20px;font-weight:700}
+#rotate small{display:block;font-size:14px;color:var(--muted);font-weight:500;margin-top:8px}
+#rotate svg{width:70px;height:70px;fill:none;stroke:#fff;stroke-width:2;margin-bottom:12px;animation:rot 2s ease-in-out infinite}
+@keyframes rot{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+
+#toast{position:fixed;left:50%;top:calc(var(--sat) + 14px);transform:translate(-50%,-30px);opacity:0;z-index:40;
+  background:rgba(30,30,34,.96);border:1px solid var(--line);border-radius:12px;padding:10px 16px;font-size:14px;max-width:86%;
+  text-align:center;transition:all .25s;pointer-events:none}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="cam" playsinline autoplay muted></video>
+  <div id="dim"></div>
+  <div id="prompter">
+    <div id="col"><div id="scroller"><div id="text"></div></div></div>
+    <div id="guide"><span></span></div>
+    <div id="prog"><i></i></div>
+  </div>
+
+  <div id="hud">
+    <div id="status" class="pill"><b class="dot"></b><span id="statusTxt">PRONTO</span></div>
+    <div id="camInfo" class="pill subtle">câmera desligada</div>
+    <div id="bytes" class="pill subtle" hidden></div>
+  </div>
+
+  <div id="rail">
+    <button id="btnPause" class="rbtn" hidden aria-label="Pausar gravação"></button>
+    <button id="btnRec" class="recbtn" aria-label="Gravar"><i></i></button>
+    <div id="recLabel">Gravar</div>
+  </div>
+
+  <div id="bar">
+    <button id="btnSettings" class="cbtn" aria-label="Ajustes">
+      <svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      <small>Ajustes</small></button>
+    <button id="btnTop" class="cbtn" aria-label="Voltar ao início do texto">
+      <svg viewBox="0 0 24 24"><path d="M5 4h14v2H5zM12 8l6 6h-4v6h-4v-6H6z"/></svg><small>Início</small></button>
+    <div class="grp">
+      <button id="fsDown" aria-label="Diminuir letra">A<span style="font-size:12px">−</span></button>
+      <div class="val"><b id="fsVal">56</b><small>letra</small></div>
+      <button id="fsUp" aria-label="Aumentar letra">A<span style="font-size:14px">+</span></button>
+    </div>
+    <div class="grp">
+      <button id="spDown" aria-label="Mais devagar">−</button>
+      <div class="val"><b id="spVal">8</b><small>velocid.</small></div>
+      <button id="spUp" aria-label="Mais rápido">+</button>
+    </div>
+    <button id="btnPlay" class="cbtn play" aria-label="Rolar texto">
+      <svg id="icoPlay" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg><small id="playTxt">Rolar</small></button>
+  </div>
+
+  <div id="cd" hidden></div>
+  <div id="camMsg" hidden></div>
+</div>
+
+<div id="rotate" hidden>
+  <div>
+    <svg viewBox="0 0 48 48"><rect x="15" y="5" width="18" height="38" rx="4"/><path d="M21 9h6"/></svg>
+    <div>Gire o iPhone para a horizontal</div>
+    <small>O vídeo é gravado em 16:9 deitado. Trave a rotação só depois de girar.</small>
+  </div>
+</div>
+
+<!-- ============ AJUSTES ============ -->
+<section id="setup" class="sheet">
+  <header>
+    <h1>Teleprompter</h1>
+    <button id="btnDone" class="btn primary">Abrir câmera</button>
+  </header>
+  <div class="body">
+    <div id="secureWarn" class="box warn" hidden style="margin:0 0 12px"></div>
+    <div class="cols">
+      <div>
+        <div class="row">
+          <b style="flex:1;font-size:16px">Roteiro</b>
+          <button id="btnPaste" class="btn small">Colar</button>
+          <button id="btnFile" class="btn small">Abrir arquivo</button>
+          <button id="btnClear" class="btn small">Limpar</button>
+          <input id="fileIn" type="file" accept=".md,.txt,text/plain,text/markdown" hidden>
+        </div>
+        <textarea id="script" data-k="script" placeholder="Cole aqui o roteiro do YouTube (pode ser o .md inteiro, com cabeçalho e marcações)…"></textarea>
+        <div class="card" style="margin-top:10px">
+          <div class="f"><label for="md">Formatar roteiro (Markdown: títulos, falas, [CORTE])</label><input type="checkbox" id="md" data-k="md"></div>
+          <div class="f"><label for="fromRoteiro">Começar a partir de “## Roteiro” (pula títulos e cabeçalho)</label><input type="checkbox" id="fromRoteiro" data-k="fromRoteiro"></div>
+        </div>
+        <div id="lastBox" class="box" hidden></div>
+        <p class="note" id="installTip" hidden>Dica: no Safari toque em <b>Compartilhar → Adicionar à Tela de Início</b>. Abrindo pelo ícone o app fica em tela cheia, sem a barra do Safari.</p>
+        <p class="note">Controle Bluetooth/teclado: <b>espaço</b> ou <b>Page Down</b> rola/pausa o texto, <b>↑ ↓</b> velocidade, <b>+ −</b> letra, <b>R</b> grava/para, <b>P</b> pausa a gravação.</p>
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>Vídeo</h2>
+          <div class="f"><label for="facing">Câmera</label>
+            <select id="facing" data-k="facing" class="camk"><option value="user">Frontal (selfie)</option><option value="environment">Traseira</option></select></div>
+          <div class="f"><label for="res">Resolução</label>
+            <select id="res" data-k="res" class="camk"><option value="2160">4K · 3840×2160</option><option value="1440">1440p · 2560×1440</option><option value="1080">Full HD · 1920×1080</option><option value="720">HD · 1280×720</option></select></div>
+          <div class="f"><label for="fps">Quadros por segundo</label>
+            <select id="fps" data-k="fps" class="camk"><option value="60">60 fps</option><option value="30">30 fps</option></select></div>
+          <div class="f"><label for="quality">Qualidade (bitrate)</label>
+            <select id="quality" data-k="quality"><option value="max">Máxima</option><option value="high">Alta</option><option value="eco">Econômica</option></select></div>
+          <div class="f" id="codecRow" hidden><label for="codec">Formato</label>
+            <select id="codec" data-k="codec"><option value="h264">H.264 (mais compatível)</option><option value="hevc">HEVC (arquivo menor)</option></select></div>
+          <div class="f"><label for="mic">Microfone</label>
+            <select id="mic" data-k="mic" class="camk"><option value="">Padrão do iPhone</option></select></div>
+          <div class="f"><label for="audioProc">Filtro de ruído/eco do iPhone</label><input type="checkbox" id="audioProc" data-k="audioProc" class="camk"></div>
+          <p class="note" id="spaceNote"></p>
+        </div>
+
+        <div class="card">
+          <h2>Texto</h2>
+          <div class="f"><label for="fontSize">Tamanho da letra</label><input type="range" id="fontSize" data-k="fontSize" min="20" max="130" step="2"><output data-o="fontSize"></output></div>
+          <div class="f"><label for="speed">Velocidade</label><input type="range" id="speed" data-k="speed" min="1" max="40" step="1"><output data-o="speed"></output></div>
+          <div class="f"><label for="colWidth">Largura da coluna</label><input type="range" id="colWidth" data-k="colWidth" min="30" max="100" step="2"><output data-o="colWidth"></output></div>
+          <div class="f"><label for="side">Posição do texto</label>
+            <select id="side" data-k="side"><option value="center">Centro</option><option value="camera">Perto da câmera</option><option value="left">Esquerda</option><option value="right">Direita</option></select></div>
+          <div class="f"><label for="guideIn">Altura da linha de leitura</label><input type="range" id="guideIn" data-k="guide" min="10" max="60" step="1"><output data-o="guide"></output></div>
+          <div class="f"><label for="dimIn">Escurecer a imagem atrás do texto</label><input type="range" id="dimIn" data-k="dim" min="0" max="85" step="5"><output data-o="dim"></output></div>
+          <div class="f"><label for="countdown">Contagem antes de gravar</label>
+            <select id="countdown" data-k="countdown"><option value="0">Sem contagem</option><option value="3">3 segundos</option><option value="5">5 segundos</option></select></div>
+          <div class="f"><label for="linkScroll">Texto anda e pausa junto com a gravação</label><input type="checkbox" id="linkScroll" data-k="linkScroll"></div>
+          <div class="f"><label for="mirrorPreview">Espelhar a prévia da câmera frontal</label><input type="checkbox" id="mirrorPreview" data-k="mirrorPreview"></div>
+          <div class="f"><label for="mirrorText">Espelhar o texto (para vidro de teleprompter)</label><input type="checkbox" id="mirrorText" data-k="mirrorText"></div>
+        </div>
+        <p class="note">O texto aparece só na tela: <b>ele não sai no vídeo gravado</b>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RESULTADO ============ -->
+<section id="result" class="sheet" hidden>
+  <header>
+    <h1 id="resTitle">Gravação pronta</h1>
+    <button id="btnResClose" class="btn">Voltar pra câmera</button>
+  </header>
+  <div class="body">
+    <div class="wrap">
+      <video id="resVideo" controls playsinline preload="metadata"></video>
+      <div>
+        <div class="actions">
+          <button id="btnShare" class="btn green">Salvar na Galeria</button>
+          <button id="btnDownload" class="btn">Baixar arquivo (app Arquivos)</button>
+          <button id="btnDelete" class="btn">Apagar esta gravação</button>
+        </div>
+        <p class="note">Ao tocar em <b>Salvar na Galeria</b>, escolha <b>“Salvar Vídeo”</b> no menu do iPhone. O vídeo vai pro app Fotos com a resolução e o fps em que foi gravado.</p>
+        <div id="resInfo"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+/* ---------------- armazenamento local ---------------- */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('tp.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('tp.' + k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem('tp.' + k); } catch (e) {} }
+};
+const DEF = { script: '', md: true, fromRoteiro: true, facing: 'user', res: '2160', fps: '60', quality: 'max', codec: 'h264',
+  mic: '', audioProc: false, fontSize: 56, speed: 8, colWidth: 72, side: 'center', guide: 28, dim: 40, countdown: '3',
+  linkScroll: true, mirrorPreview: true, mirrorText: false };
+const S = Object.assign({}, DEF, store.get('settings', {}));
+let saveT;
+const save = () => { clearTimeout(saveT); saveT = setTimeout(() => store.set('settings', S), 250); };
+
+/* ---------------- elementos ---------------- */
+const cam = $('#cam'), prompter = $('#prompter'), col = $('#col'), scroller = $('#scroller'), textEl = $('#text');
+const statusEl = $('#status'), statusTxt = $('#statusTxt'), camInfo = $('#camInfo'), bytesEl = $('#bytes');
+const btnRec = $('#btnRec'), btnPause = $('#btnPause'), recLabel = $('#recLabel');
+const setupEl = $('#setup'), resultEl = $('#result'), rotateEl = $('#rotate'), cdEl = $('#cd'), camMsg = $('#camMsg');
+
+const ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
+const ICON_RESUME = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>';
+const ICON_PLAY = '<path d="M7 4l13 8-13 8z"/>';
+const ICON_STOPSCROLL = '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>';
+
+let toastT;
+function toast(msg, ms = 3200) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms);
+}
+const fmtTime = ms => { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + String(x).padStart(2, '0'); };
+const fmtBytes = b => b >= 1e9 ? (b / 1e9).toFixed(2).replace('.', ',') + ' GB' : (b / 1e6).toFixed(b >= 1e8 ? 0 : 1).replace('.', ',') + ' MB';
+
+/* ================= TEXTO ================= */
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/__(.+?)__/g, '<b>$1</b>')
+  .replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*/g, '$1<i>$2</i>');
+
+function renderScript() {
+  let s = (S.script || '').replace(/\r\n?/g, '\n');
+  let html = '';
+  if (!s.trim()) {
+    html = '<p class="empty">Toque em ⚙ Ajustes e cole o seu roteiro.</p>';
+  } else if (!S.md) {
+    html = s.split('\n').map(l => l.trim() ? '<p>' + esc(l) + '</p>' : '<div class="gap"></div>').join('');
+  } else {
+    s = s.replace(/^﻿?---\n[\s\S]*?\n---[ \t]*\n?/, '');
+    if (S.fromRoteiro) { const m = s.match(/^#{1,3}\s*Roteiro\s*$/mi); if (m) s = s.slice(m.index + m[0].length); }
+    for (const raw of s.split('\n')) {
+      const l = raw.trim(); let m;
+      if (!l) html += '<div class="gap"></div>';
+      else if ((m = l.match(/^#{1,6}\s+(.*)$/))) html += '<div class="h">' + inline(m[1]) + '</div>';
+      else if ((m = l.match(/^\[(.+)\]$/))) html += '<div class="cue' + (/gancho/i.test(m[1]) ? ' hook' : '') + '">' + esc(m[1]) + '</div>';
+      else if ((m = l.match(/^>\s?(.*)$/))) html += '<p class="say">' + inline(m[1]) + '</p>';
+      else if (/^(-{3,}|\*{3,}|_{3,})$/.test(l)) html += '<hr>';
+      else if ((m = l.match(/^(?:[-*+]|\d+[.)])\s+(.*)$/))) html += '<p class="pt">' + inline(m[1]) + '</p>';
+      else html += '<p>' + inline(l) + '</p>';
+    }
+  }
+  const ratio = maxPos ? pos / maxPos : 0;
+  textEl.innerHTML = html;
+  layout(ratio);
+}
+
+/* ================= ROLAGEM ================= */
+let pos = 0, maxPos = 0, playing = false, lastT = 0, drag = null;
+const pxPerSec = () => S.speed * 0.05 * S.fontSize * 1.32;   // velocidade em linhas/seg × altura da linha
+
+function layout(keepRatio) {
+  const H = prompter.clientHeight;
+  const g = H * S.guide / 100;
+  scroller.style.paddingTop = g + 'px';
+  scroller.style.paddingBottom = Math.max(0, H - g - S.fontSize * 1.32) + 'px';
+  maxPos = Math.max(0, scroller.offsetHeight - H);
+  setPos(keepRatio != null ? keepRatio * maxPos : pos);
+}
+function setPos(p) {
+  pos = Math.max(0, Math.min(maxPos, p));
+  scroller.style.transform = 'translate3d(0,' + (-pos).toFixed(1) + 'px,0)';
+  $('#prog i').style.height = (maxPos ? pos / maxPos * 100 : 0) + '%';
+}
+function setPlaying(on) {
+  playing = !!on && maxPos > 0;
+  if (playing && pos >= maxPos) playing = false;
+  $('#btnPlay').classList.toggle('on', playing);
+  $('#icoPlay').innerHTML = playing ? ICON_STOPSCROLL : ICON_PLAY;
+  $('#playTxt').textContent = playing ? 'Pausar' : 'Rolar';
+}
+function tick(t) {
+  const dt = Math.min(0.1, (t - lastT) / 1000); lastT = t;
+  if (playing && !drag) {
+    setPos(pos + pxPerSec() * dt);
+    if (pos >= maxPos) setPlaying(false);
+  }
+  if (recState === 'rec' || recState === 'paused') updateTimer();
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(t => { lastT = t; requestAnimationFrame(tick); });
+
+prompter.addEventListener('pointerdown', e => {
+  drag = { y: e.clientY, p: pos, t: performance.now(), moved: false };
+  try { prompter.setPointerCapture(e.pointerId); } catch (_) {}
+});
+prompter.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dy = e.clientY - drag.y;
+  if (Math.abs(dy) > 8) drag.moved = true;
+  if (drag.moved) setPos(drag.p - dy);
+});
+const endDrag = () => {
+  if (drag && !drag.moved && performance.now() - drag.t < 450) setPlaying(!playing);
+  drag = null;
+};
+prompter.addEventListener('pointerup', endDrag);
+prompter.addEventListener('pointercancel', () => { drag = null; });
+prompter.addEventListener('wheel', e => { setPos(pos + e.deltaY); e.preventDefault(); }, { passive: false });
+
+/* ================= AJUSTES ================= */
+function camSide() {
+  let a = typeof window.orientation === 'number' ? window.orientation : (screen.orientation ? screen.orientation.angle : 0);
+  if (a === 90) return 'left';
+  if (a === -90 || a === 270) return 'right';
+  return 'center';
+}
+function applyVisual() {
+  const r = document.documentElement.style;
+  r.setProperty('--fs', S.fontSize + 'px');
+  r.setProperty('--colw', S.colWidth + '%');
+  r.setProperty('--dim', S.dim / 100);
+  r.setProperty('--guide', S.guide + '%');
+  col.dataset.side = S.side === 'camera' ? camSide() : S.side;
+  textEl.classList.toggle('flip', !!S.mirrorText);
+  cam.style.transform = S.mirrorPreview && S.facing === 'user' ? 'scaleX(-1)' : 'none';
+  $('#fsVal').textContent = S.fontSize;
+  $('#spVal').textContent = S.speed;
+  const outs = { fontSize: S.fontSize + ' px', speed: S.speed, colWidth: S.colWidth + '%', guide: S.guide + '%', dim: S.dim + '%' };
+  $$('output[data-o]').forEach(o => o.textContent = outs[o.dataset.o]);
+}
+function fillForm() {
+  $$('[data-k]').forEach(el => {
+    const v = S[el.dataset.k];
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  });
+}
+let camDirty = false, textDirty = false;
+$$('[data-k]').forEach(el => {
+  el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', () => {
+    const k = el.dataset.k;
+    S[k] = el.type === 'checkbox' ? el.checked : (el.type === 'range' ? +el.value : el.value);
+    if (el.classList.contains('camk')) camDirty = true;
+    if (k === 'script' || k === 'md' || k === 'fromRoteiro') textDirty = true;
+    save(); applyVisual();
+    if (k === 'fontSize' || k === 'guide' || k === 'colWidth' || k === 'side') layout(maxPos ? pos / maxPos : 0);
+    if (k === 'quality' || k === 'res' || k === 'fps' || k === 'codec') updateSpaceNote();
+  });
+});
+
+function changeFont(d) {
+  const ratio = maxPos ? pos / maxPos : 0;
+  S.fontSize = Math.max(20, Math.min(130, S.fontSize + d)); save(); applyVisual(); layout(ratio); fillForm();
+}
+function changeSpeed(d) { S.speed = Math.max(1, Math.min(40, S.speed + d)); save(); applyVisual(); fillForm(); }
+$('#fsUp').onclick = () => changeFont(4);
+$('#fsDown').onclick = () => changeFont(-4);
+$('#spUp').onclick = () => changeSpeed(1);
+$('#spDown').onclick = () => changeSpeed(-1);
+$('#btnPlay').onclick = () => setPlaying(!playing);
+$('#btnTop').onclick = () => { setPlaying(false); setPos(0); };
+
+$('#btnPaste').onclick = async () => {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (!t) throw new Error('vazio');
+    S.script = t; $('#script').value = t; textDirty = true; save(); toast('Roteiro colado');
+  } catch (e) { $('#script').focus(); toast('Toque e segure no campo e escolha “Colar”'); }
+};
+$('#btnFile').onclick = () => $('#fileIn').click();
+$('#fileIn').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  S.script = await f.text(); $('#script').value = S.script; textDirty = true; save(); toast('Roteiro carregado: ' + f.name);
+  e.target.value = '';
+};
+$('#btnClear').onclick = () => {
+  if (S.script && !confirm('Apagar o roteiro do campo?')) return;
+  S.script = ''; $('#script').value = ''; textDirty = true; save();
+};
+
+function openSetup() {
+  setPlaying(false);
+  fillForm(); camDirty = false; textDirty = false;
+  $$('.camk').forEach(el => el.disabled = recState !== 'idle');
+  $('#btnDone').textContent = stream ? 'Voltar pra câmera' : 'Abrir câmera';
+  setupEl.hidden = false; updateSpaceNote(); refreshLastBox(); updateRotate();
+}
+function closeSetup() {
+  setupEl.hidden = true;
+  if (textDirty) { pos = 0; renderScript(); }
+  updateRotate();
+  if (!stream || (camDirty && recState === 'idle')) openCamera();
+}
+$('#btnSettings').onclick = openSetup;
+$('#btnDone').onclick = closeSetup;
+
+/* ================= CÂMERA ================= */
+const RES = { '2160': [3840, 2160], '1440': [2560, 1440], '1080': [1920, 1080], '720': [1280, 720] };
+let stream = null, streamLand = true, opening = false;
+const isLand = () => innerWidth >= innerHeight;
+
+function stopStream() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; }
+function vSettings() { const t = stream && stream.getVideoTracks()[0]; return t ? t.getSettings() : {}; }
+
+async function openCamera() {
+  if (opening || recState !== 'idle') return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showCamMsg('Este navegador não liberou a câmera. Abra o link pelo <b>Safari</b> com <b>https://</b>.'); return;
+  }
+  opening = true; camMsg.hidden = true;
+  stopStream();
+  const [W, H] = RES[S.res], fps = +S.fps, land = isLand();
+  const audio = { echoCancellation: !!S.audioProc, noiseSuppression: !!S.audioProc, autoGainControl: !!S.audioProc };
+  if (S.mic) audio.deviceId = { exact: S.mic };
+  const vid = (w, h) => ({ facingMode: S.facing, width: { ideal: w }, height: { ideal: h }, frameRate: { ideal: fps, max: fps } });
+  let lastErr = null;
+  const gum = async c => { try { return await navigator.mediaDevices.getUserMedia(c); } catch (e) { lastErr = e; return null; } };
+  const score = st => { const s = st.getVideoTracks()[0].getSettings(); return Math.max(s.width || 0, s.height || 0) * 1000 + (s.frameRate || 0); };
+  const kill = st => st && st.getTracks().forEach(t => t.stop());
+
+  let a = land ? [W, H] : [H, W], b = [a[1], a[0]];
+  let best = await gum({ video: vid(a[0], a[1]), audio });
+  if (!best && S.mic) { S.mic = ''; delete audio.deviceId; best = await gum({ video: vid(a[0], a[1]), audio }); }
+  if (best && score(best) < W * 1000 * 0.95) {           // não pegou a resolução pedida: tenta a orientação invertida
+    const sc = score(best); kill(best);
+    const alt = await gum({ video: vid(b[0], b[1]), audio });
+    if (alt && score(alt) > sc) best = alt; else { kill(alt); best = await gum({ video: vid(a[0], a[1]), audio }); }
+  }
+  if (!best) best = await gum({ video: { facingMode: S.facing }, audio: true });
+  opening = false;
+  if (!best) {
+    const n = lastErr && lastErr.name;
+    showCamMsg(n === 'NotAllowedError'
+      ? 'A câmera ou o microfone foi bloqueado. No iPhone: <b>Ajustes → Apps → Safari → Câmera e Microfone → Permitir</b>, depois recarregue a página.'
+      : 'Não consegui abrir a câmera (' + esc(String(lastErr && (lastErr.message || lastErr.name) || 'erro')) + ').');
+    return;
+  }
+  stream = best; streamLand = land;
+  cam.srcObject = stream;
+  try { await cam.play(); } catch (e) {}
+  const vt = stream.getVideoTracks()[0];
+  vt.addEventListener('ended', onTrackEnded);
+  updateCamInfo(); applyVisual(); keepAwake(); listMics();
+}
+function showCamMsg(html) {
+  camMsg.innerHTML = html + '<br><button class="btn small" id="retryCam">Tentar de novo</button>';
+  camMsg.hidden = false; $('#retryCam').onclick = openCamera;
+}
+function updateCamInfo() {
+  const s = vSettings(); if (!s.width) { camInfo.textContent = 'câmera desligada'; return; }
+  const fps = Math.round(s.frameRate || 0);
+  const [W] = RES[S.res];
+  camInfo.textContent = s.width + '×' + s.height + (fps ? ' · ' + fps + 'fps' : '');
+  const low = Math.max(s.width, s.height) < W * 0.95 || (fps && fps < +S.fps - 2);
+  const portrait = s.height > s.width;
+  camInfo.classList.toggle('warn', low || portrait);
+  if (portrait && isLand()) toast('A câmera veio em pé. Gire o iPhone e toque em ⚙ → Voltar pra câmera.', 5000);
+  else if (low) toast('O iPhone liberou ' + s.width + '×' + s.height + (fps ? ' a ' + fps + 'fps' : '') + ' nesta câmera.', 4500);
+}
+async function listMics() {
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+    const sel = $('#mic'), cur = S.mic;
+    sel.innerHTML = '<option value="">Padrão do iPhone</option>' +
+      devs.filter(d => d.deviceId && d.deviceId !== 'default').map((d, i) => '<option value="' + esc(d.deviceId) + '">' + esc(d.label || 'Microfone ' + (i + 1)) + '</option>').join('');
+    sel.value = cur; if (sel.value !== cur) sel.value = '';
+  } catch (e) {}
+}
+function onTrackEnded() {
+  if (recState === 'rec' || recState === 'paused') { toast('A câmera foi interrompida. A gravação foi finalizada até aqui.', 5000); stopRecording(); }
+  else { stream = null; updateCamInfo(); }
+}
+
+/* tela sempre acesa */
+let wake = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) {}
+}
+
+/* ================= GRAVAÇÃO ================= */
+let recState = 'idle';    // idle | countdown | rec | paused | stopping
+let rec = null, sink = null, recAccum = 0, recStart = 0, curMeta = null, cdCancel = null;
+
+function pickMime() {
+  const MR = window.MediaRecorder; if (!MR) return '';
+  const list = [];
+  if (S.codec === 'hevc') list.push('video/mp4;codecs=hvc1,mp4a.40.2', 'video/mp4;codecs=hvc1');
+  list.push('video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm');
+  return list.find(m => { try { return MR.isTypeSupported(m); } catch (e) { return false; } }) || '';
+}
+function bitrateFor(maxDim, fps) {
+  const base = maxDim >= 3000 ? [35, 50] : maxDim >= 2400 ? [20, 30] : maxDim >= 1700 ? [12, 18] : [7, 10];
+  let mbps = base[fps > 40 ? 1 : 0] * ({ max: 1.5, high: 1, eco: 0.6 }[S.quality] || 1);
+  if (S.codec === 'hevc') mbps *= 0.7;
+  return Math.round(mbps * 1e6);
+}
+
+/* gravação em disco (armazenamento do Safari) pra vídeos longos em 4K não estourarem a memória */
+const WORKER_SRC = `
+let h = null, off = 0, q = Promise.resolve();
+onmessage = e => { const m = e.data; q = q.then(() => run(m)).catch(err => postMessage({ t: 'err', msg: String(err && err.message || err) })); };
+async function run(m) {
+  if (m.t === 'open') {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle('gravacoes', { create: true });
+    const fh = await dir.getFileHandle(m.name, { create: true });
+    h = await fh.createSyncAccessHandle(); await h.truncate(0); off = 0;
+    postMessage({ t: 'opened' });
+  } else if (m.t === 'write') {
+    const buf = new Uint8Array(await m.blob.arrayBuffer());
+    let w = 0;
+    while (w < buf.length) { const n = await h.write(buf.subarray(w), { at: off + w }); if (!n) throw new Error('falha ao gravar no armazenamento'); w += n; }
+    off += buf.length; await h.flush();
+    postMessage({ t: 'progress', bytes: off });
+  } else if (m.t === 'close') {
+    if (h) { await h.flush(); await h.close(); h = null; }
+    postMessage({ t: 'closed', bytes: off });
+  }
+}`;
+async function recDir() { const root = await navigator.storage.getDirectory(); return root.getDirectoryHandle('gravacoes', { create: true }); }
+async function storedFile(name) { const d = await recDir(); return (await d.getFileHandle(name)).getFile(); }
+async function removeStored(name) { try { const d = await recDir(); await d.removeEntry(name); } catch (e) {} }
+
+async function makeSink(name, type) {
+  if (window.Worker && navigator.storage && navigator.storage.getDirectory) {
+    let w;
+    try {
+      w = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })));
+      await new Promise((res, rej) => {
+        const to = setTimeout(() => rej(new Error('timeout')), 5000);
+        w.onmessage = e => { if (e.data.t === 'opened') { clearTimeout(to); res(); } else if (e.data.t === 'err') { clearTimeout(to); rej(new Error(e.data.msg)); } };
+        w.postMessage({ t: 'open', name });
+      });
+      let closeRes = null, failed = false;
+      w.onmessage = e => {
+        const m = e.data;
+        if (m.t === 'progress') showBytes(m.bytes);
+        else if (m.t === 'err' && !failed) { failed = true; toast('Erro ao salvar no armazenamento (espaço cheio?): ' + m.msg, 7000); }
+        else if (m.t === 'closed' && closeRes) closeRes();
+      };
+      return {
+        kind: 'disk',
+        write(b) { w.postMessage({ t: 'write', blob: b }); },
+        async finish() {
+          await new Promise(r => { closeRes = r; w.postMessage({ t: 'close' }); });
+          w.terminate();
+          const f = await storedFile(name);
+          return new File([f], name, { type });
+        }
+      };
+    } catch (e) { if (w) w.terminate(); }
+  }
+  const chunks = []; let bytes = 0;
+  return {
+    kind: 'mem',
+    write(b) { chunks.push(b); bytes += b.size; showBytes(bytes); },
+    async finish() { return new File(chunks, name, { type }); }
+  };
+}
+function showBytes(b) { bytesEl.hidden = false; bytesEl.textContent = fmtBytes(b); }
+
+function countdown(n) {
+  return new Promise(res => {
+    n = +n || 0;
+    if (!n) return res(true);
+    let k = n; cdEl.textContent = k; cdEl.hidden = false;
+    const iv = setInterval(() => {
+      k--;
+      if (k <= 0) { clearInterval(iv); cdEl.hidden = true; cdCancel = null; res(true); }
+      else cdEl.textContent = k;
+    }, 1000);
+    cdCancel = () => { clearInterval(iv); cdEl.hidden = true; cdCancel = null; res(false); };
+  });
+}
+
+async function startRecording() {
+  if (!stream || stream.getVideoTracks()[0].readyState === 'ended') { await openCamera(); if (!stream) return; }
+  if (!window.MediaRecorder) { toast('Este iPhone/iOS não grava pelo navegador. Atualize o iOS.', 6000); return; }
+  if (!isLand()) { toast('Gire o iPhone para a horizontal antes de gravar.'); return; }
+  const last = store.get('last', null);
+  if (last && !last.saved && !confirm('A gravação anterior ainda não foi salva na galeria. Uma nova gravação vai apagá-la. Continuar?')) return;
+  if (last) await removeStored(last.name);
+  store.del('last');
+
+  recState = 'countdown'; updateUI();
+  const go = await countdown(S.countdown);
+  if (!go) { recState = 'idle'; updateUI(); return; }
+
+  const mime = pickMime();
+  const s = vSettings();
+  const fps = Math.round(s.frameRate || +S.fps);
+  const opts = { videoBitsPerSecond: bitrateFor(Math.max(s.width || 0, s.height || 0), fps), audioBitsPerSecond: 192000 };
+  if (mime) opts.mimeType = mime;
+  try { rec = new MediaRecorder(stream, opts); }
+  catch (e) { try { rec = new MediaRecorder(stream); } catch (e2) { toast('Não consegui iniciar a gravação: ' + e2.message, 6000); recState = 'idle'; updateUI(); return; } }
+
+  const type = (rec.mimeType || mime || 'video/mp4').split(';')[0];
+  const ext = type.includes('webm') ? 'webm' : (type.includes('quicktime') ? 'mov' : 'mp4');
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const name = 'video-' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_' + p(d.getHours()) + 'h' + p(d.getMinutes()) + 'm' + p(d.getSeconds()) + '.' + ext;
+  sink = await makeSink(name, type);
+  curMeta = { name, type, w: s.width, h: s.height, fps, date: Date.now(), complete: false, saved: false, disk: sink.kind === 'disk', dur: 0 };
+  if (sink.kind === 'disk') store.set('last', curMeta);
+
+  rec.ondataavailable = e => { if (e.data && e.data.size) sink.write(e.data); };
+  rec.onstop = finishRecording;
+  rec.onerror = e => toast('Erro na gravação: ' + ((e.error && e.error.message) || ''), 6000);
+  rec.start(1000);
+  recAccum = 0; recStart = performance.now(); recState = 'rec';
+  if (S.linkScroll) setPlaying(true);
+  keepAwake(); updateUI();
+}
+function pauseRecording() {
+  if (recState !== 'rec' || !rec) return;
+  try { rec.pause(); } catch (e) {}
+  recAccum += performance.now() - recStart; recState = 'paused';
+  if (S.linkScroll) setPlaying(false);
+  updateUI();
+}
+async function resumeRecording() {
+  if (recState !== 'paused' || !rec) return;
+  if (!stream || stream.getVideoTracks()[0].readyState === 'ended') { toast('A câmera foi desligada; finalizando a gravação.'); return stopRecording(); }
+  recState = 'countdown-resume'; updateUI();
+  const go = await countdown(S.countdown);
+  if (!go) { if (recState === 'countdown-resume') { recState = 'paused'; updateUI(); } return; }
+  try { rec.resume(); } catch (e) {}
+  recStart = performance.now(); recState = 'rec';
+  if (S.linkScroll) setPlaying(true);
+  updateUI();
+}
+function stopRecording() {
+  if (cdCancel) cdCancel();
+  if (!rec || recState === 'idle' || recState === 'stopping') return;
+  if (recState === 'rec') recAccum += performance.now() - recStart;
+  recState = 'stopping'; setPlaying(false); updateUI();
+  try { if (rec.state !== 'inactive') rec.stop(); else finishRecording(); } catch (e) { finishRecording(); }
+}
+let finishing = false;
+async function finishRecording() {
+  if (finishing || !sink) return; finishing = true;
+  statusTxt.textContent = 'SALVANDO…';
+  try {
+    const file = await sink.finish();
+    curMeta.complete = true; curMeta.dur = recAccum; curMeta.size = file.size;
+    if (curMeta.disk) store.set('last', curMeta);
+    showResult(file, curMeta);
+  } catch (e) {
+    toast('Erro ao finalizar o vídeo: ' + e.message, 7000);
+  } finally {
+    rec = null; sink = null; finishing = false; recState = 'idle'; bytesEl.hidden = true; updateUI();
+  }
+}
+function updateTimer() {
+  const ms = recAccum + (recState === 'rec' ? performance.now() - recStart : 0);
+  statusTxt.textContent = (recState === 'rec' ? 'REC ' : 'PAUSADO ') + fmtTime(ms);
+}
+function updateUI() {
+  const st = recState;
+  document.body.classList.toggle('recording', st === 'rec');
+  statusEl.className = 'pill' + (st === 'rec' ? ' rec' : (st === 'paused' || st === 'countdown-resume') ? ' paused' : '');
+  if (st === 'idle') statusTxt.textContent = 'PRONTO';
+  else if (st === 'countdown') statusTxt.textContent = 'PREPARANDO';
+  else if (st === 'stopping') statusTxt.textContent = 'SALVANDO…';
+  else updateTimer();
+  const active = st !== 'idle' && st !== 'stopping';
+  btnRec.classList.toggle('stop', active);
+  btnRec.setAttribute('aria-label', active ? 'Parar gravação' : 'Gravar');
+  recLabel.textContent = st === 'idle' ? 'Gravar' : st === 'stopping' ? 'Salvando' : 'Parar';
+  btnPause.hidden = !(st === 'rec' || st === 'paused');
+  btnPause.innerHTML = st === 'paused' ? ICON_RESUME : ICON_PAUSE;
+  btnPause.classList.toggle('resume', st === 'paused');
+  btnPause.setAttribute('aria-label', st === 'paused' ? 'Continuar gravação' : 'Pausar gravação');
+}
+btnRec.onclick = () => {
+  if (recState === 'idle') startRecording();
+  else if (recState === 'countdown') { if (cdCancel) cdCancel(); }
+  else stopRecording();
+};
+btnPause.onclick = () => { if (recState === 'rec') pauseRecording(); else if (recState === 'paused') resumeRecording(); };
+
+/* ================= RESULTADO ================= */
+let curFile = null, curUrl = null, shownMeta = null;
+function showResult(file, meta) {
+  curFile = file; shownMeta = meta;
+  if (curUrl) URL.revokeObjectURL(curUrl);
+  curUrl = URL.createObjectURL(file);
+  const v = $('#resVideo'); v.src = curUrl;
+  $('#resTitle').textContent = meta.complete ? 'Gravação pronta' : 'Gravação recuperada';
+  $('#resInfo').innerHTML =
+    '<b>' + esc(meta.name) + '</b><br>' +
+    (meta.w ? meta.w + '×' + meta.h + ' · ' + meta.fps + ' fps<br>' : '') +
+    (meta.dur ? 'Duração: ' + fmtTime(meta.dur) + '<br>' : '') +
+    'Tamanho: ' + fmtBytes(file.size) + '<br>Formato: ' + esc(meta.type || file.type) +
+    (meta.complete ? '' : '<br><span style="color:var(--hl)">A gravação foi interrompida antes de terminar; o arquivo pode estar incompleto.</span>');
+  setupEl.hidden = true; resultEl.hidden = false; updateRotate();
+}
+function markSaved() { if (shownMeta) { shownMeta.saved = true; if (shownMeta.disk) store.set('last', shownMeta); } }
+$('#btnShare').onclick = async () => {
+  if (!curFile) return;
+  const data = { files: [curFile] };
+  if (navigator.canShare && navigator.canShare(data)) {
+    try { await navigator.share(data); markSaved(); toast('Pronto! Confira no app Fotos.'); }
+    catch (e) { if (e.name !== 'AbortError') { toast('Não abriu o menu de salvar (' + e.message + '). Use “Baixar arquivo”.', 6000); } }
+  } else {
+    toast('Seu iOS não permite salvar direto. Use “Baixar arquivo” e depois “Salvar Vídeo” no app Arquivos.', 7000);
+  }
+};
+$('#btnDownload').onclick = () => {
+  if (!curFile) return;
+  const a = document.createElement('a'); a.href = curUrl; a.download = curFile.name;
+  document.body.appendChild(a); a.click(); a.remove(); markSaved();
+  toast('Baixando para o app Arquivos → Downloads', 4500);
+};
+$('#btnDelete').onclick = async () => {
+  if (!confirm('Apagar esta gravação? Não dá pra desfazer.')) return;
+  if (shownMeta && shownMeta.disk) await removeStored(shownMeta.name);
+  store.del('last'); closeResult(); toast('Gravação apagada');
+};
+function closeResult() {
+  const v = $('#resVideo'); v.pause(); v.removeAttribute('src'); v.load();
+  resultEl.hidden = true; updateRotate();
+  if (!stream || stream.getVideoTracks()[0].readyState === 'ended') openCamera();
+}
+$('#btnResClose').onclick = closeResult;
+
+/* última gravação (sobrevive se o Safari recarregar a página) */
+async function refreshLastBox() {
+  const box = $('#lastBox'), last = store.get('last', null);
+  box.hidden = true;
+  if (!last || !last.disk || recState !== 'idle') return;
+  let f; try { f = await storedFile(last.name); } catch (e) { store.del('last'); return; }
+  if (!f.size) return;
+  box.className = 'box' + (last.saved ? '' : ' warn');
+  box.innerHTML = (last.saved ? 'Última gravação' : '<b>Gravação ainda não salva na galeria</b>') + ': ' +
+    new Date(last.date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) +
+    ' · ' + fmtBytes(f.size) + ' <button class="btn small" id="openLast" style="margin-left:6px">Abrir</button>';
+  box.hidden = false;
+  $('#openLast').onclick = () => showResult(new File([f], last.name, { type: last.type }), last);
+}
+
+async function updateSpaceNote() {
+  const n = $('#spaceNote');
+  const [W] = RES[S.res];
+  const bps = bitrateFor(W, +S.fps);
+  let txt = 'Arquivo aproximado: ' + fmtBytes(bps / 8 * 60) + ' por minuto.';
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const e = await navigator.storage.estimate();
+      if (e.quota) { const free = e.quota - (e.usage || 0); txt += ' Espaço liberado pro app: ~' + fmtBytes(free) + ' (≈ ' + Math.floor(free / (bps / 8) / 60) + ' min).'; }
+    }
+  } catch (e) {}
+  n.textContent = txt;
+}
+
+/* ================= ORIENTAÇÃO / CICLO DE VIDA ================= */
+function updateRotate() { rotateEl.hidden = isLand() || !setupEl.hidden || !resultEl.hidden; }
+let rT;
+function onResize() {
+  updateRotate(); applyVisual(); layout(maxPos ? pos / maxPos : 0);
+  clearTimeout(rT);
+  rT = setTimeout(() => {
+    layout(maxPos ? pos / maxPos : 0);
+    if (recState === 'rec' || recState === 'paused') { if (isLand() !== streamLand) toast('Não gire o iPhone durante a gravação.', 4000); return; }
+    if (stream && isLand() !== streamLand && setupEl.hidden && resultEl.hidden) openCamera();
+  }, 700);
+}
+addEventListener('resize', onResize);
+addEventListener('orientationchange', onResize);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    if (recState === 'rec') pauseRecording();
+    setPlaying(false);
+  } else {
+    keepAwake();
+    if (recState === 'paused' && (!stream || stream.getVideoTracks()[0].readyState === 'ended')) stopRecording();
+    else if (recState === 'idle' && stream && stream.getVideoTracks()[0].readyState === 'ended') openCamera();
+  }
+});
+addEventListener('beforeunload', e => { if (recState === 'rec' || recState === 'paused') { e.preventDefault(); e.returnValue = ''; } });
+
+addEventListener('keydown', e => {
+  if (!setupEl.hidden || !resultEl.hidden) return;
+  const k = e.key;
+  if (k === ' ' || k === 'PageDown' || k === 'Enter') { setPlaying(!playing); e.preventDefault(); }
+  else if (k === 'PageUp') { setPos(pos - S.fontSize * 1.32 * 3); e.preventDefault(); }
+  else if (k === 'ArrowUp' || k === 'ArrowRight') { changeSpeed(1); e.preventDefault(); }
+  else if (k === 'ArrowDown' || k === 'ArrowLeft') { changeSpeed(-1); e.preventDefault(); }
+  else if (k === '+' || k === '=') changeFont(4);
+  else if (k === '-') changeFont(-4);
+  else if (k === 'r' || k === 'R') btnRec.click();
+  else if (k === 'p' || k === 'P') btnPause.click();
+  else if (k === 'Home') { setPlaying(false); setPos(0); }
+});
+
+/* ================= INÍCIO ================= */
+(function init() {
+  fillForm(); applyVisual(); renderScript(); updateUI();
+  if (window.MediaRecorder) {
+    try { if (MediaRecorder.isTypeSupported('video/mp4;codecs=hvc1')) $('#codecRow').hidden = false; } catch (e) {}
+  }
+  if (!window.isSecureContext) {
+    const w = $('#secureWarn'); w.hidden = false;
+    w.innerHTML = 'Esta página precisa ser aberta por <b>https://</b> pra usar a câmera.';
+  }
+  if (navigator.standalone === false) $('#installTip').hidden = false;
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+  openSetup();
+})();
+})();
+</script>
+</body>
+</html>
