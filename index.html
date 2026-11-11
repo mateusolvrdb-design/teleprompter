@@ -230,6 +230,18 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 #rotate svg{width:64px;height:64px;fill:none;stroke:#fff;stroke-width:2;margin-bottom:12px;animation:rot 2s ease-in-out infinite}
 @keyframes rot{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
 
+#install{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.94);display:grid;place-items:center;overflow-y:auto;
+  padding:calc(var(--sat) + 20px) calc(var(--sar) + 20px) calc(var(--sab) + 20px) calc(var(--sal) + 20px)}
+#install .box{width:min(520px,100%);background:var(--sheet);border:1px solid var(--line2);border-radius:22px;padding:22px}
+#install .top{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+#install .top img{width:60px;height:60px;border-radius:14px}
+#install h2{margin:0;font-size:20px}
+#install .top p{margin:2px 0 0;color:var(--muted);font-size:14px}
+#install ol{margin:0;padding:0;list-style:none;counter-reset:s}
+#install li{counter-increment:s;display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:15px}
+#install li::before{content:counter(s);flex:none;width:26px;height:26px;border-radius:50%;background:var(--acc);color:#000;font-weight:800;font-size:14px;display:grid;place-items:center}
+#install li svg{width:22px;height:22px;flex:none;fill:none;stroke:#0a84ff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
+#install .act{display:flex;justify-content:flex-end;margin-top:14px}
 #toast{position:fixed;left:50%;top:calc(var(--sat) + 52px);transform:translate(-50%,-20px);opacity:0;z-index:60;
   background:rgba(36,36,38,.97);border:1px solid var(--line2);border-radius:12px;padding:10px 16px;font-size:14px;max-width:80%;
   text-align:center;transition:all .25s;pointer-events:none}
@@ -392,6 +404,22 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
     <div class="big">Gire o iPhone para a horizontal</div>
     <small>O vídeo é gravado deitado (16:9).</small>
     <button class="btn" id="btnRotScript">Editar roteiro</button>
+  </div>
+</div>
+
+<div id="install" hidden>
+  <div class="box">
+    <div class="top">
+      <img src="icon-180.png" alt="">
+      <div><h2>Instale o Prompter no iPhone</h2><p>Vira um ícone na tela de início e abre em tela cheia, sem o Safari.</p></div>
+    </div>
+    <ol>
+      <li><span>Toque em <b>Compartilhar</b> <svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5v10h14V11h-1"/></svg> na barra do Safari (embaixo ou em cima). Se não aparecer, toque em <b>•••</b> primeiro.</span></li>
+      <li><span>Role a lista e toque em <b>Adicionar à Tela de Início</b> <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg></span></li>
+      <li><span>Deixe <b>Abrir como App</b> ligado, se aparecer, e toque em <b>Adicionar</b>.</span></li>
+      <li><span>Feche o Safari e abra o <b>Prompter</b> pelo ícone. Permita a câmera e o microfone.</span></li>
+    </ol>
+    <div class="act"><button class="btn" id="installLater">Usar no navegador mesmo</button></div>
   </div>
 </div>
 
@@ -1195,12 +1223,19 @@ addEventListener('keydown', e => {
   fillForm(); applyVisual(); renderScript(); updateUI(); updateRotate();
   if (window.MediaRecorder) { try { if (MediaRecorder.isTypeSupported('video/mp4;codecs=hvc1')) $('#codecRow').hidden = false; } catch (e) {} }
   if (!window.isSecureContext) $('#secureWarn').hidden = false;
-  if (navigator.standalone === false) $('#installTip').hidden = false;
+  if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js'); } catch (e) {} }
+  const installed = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!installed) $('#installTip').hidden = false;
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
   try { await loadTakes(); } catch (e) {}
   updateTakesBtn();
-  openCamera();
-  if (!S.script.trim()) openScript();
+  const start = () => { openCamera(); if (!S.script.trim()) openScript(); };
+  if (iOS && !installed && !sessionStorage.getItem('tp.skipInstall')) {
+    // no Safari: mostra como instalar antes de pedir câmera
+    $('#install').hidden = false;
+    $('#installLater').onclick = () => { try { sessionStorage.setItem('tp.skipInstall', '1'); } catch (e) {} $('#install').hidden = true; start(); };
+  } else start();
 })();
 })();
 </script>
