@@ -222,6 +222,7 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 .take .t1 em.w{background:rgba(255,214,10,.15);color:var(--acc)}
 .take .t2{font-size:12.5px;color:var(--muted);margin:2px 0 8px;font-variant-numeric:tabular-nums}
 .take .t3{display:flex;gap:6px}
+.savewarn{background:rgba(255,214,10,.1);border:1px solid rgba(255,214,10,.45);border-radius:14px;padding:12px;font-size:13.5px;line-height:1.5;margin-bottom:10px}
 .empty-takes{color:var(--muted);text-align:center;padding:40px 10px}
 
 #rotate{position:fixed;inset:0;z-index:35;background:rgba(0,0,0,.9);display:grid;place-items:center;text-align:center;padding:30px}
@@ -384,7 +385,7 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
   <div class="ph">
     <h1>Takes</h1>
     <button class="btn green" id="btnSaveAll">Salvar na Galeria</button>
-    <button class="btn" id="btnTakesClose">Câmera</button>
+    <button class="btn" id="btnTakesClose">Fechar</button>
   </div>
   <div class="sb">
     <div id="playerWrap">
@@ -392,8 +393,9 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
       <div id="playerInfo"></div>
     </div>
     <div>
+      <div id="saveNote"></div>
       <div id="takeList"></div>
-      <p class="note">Ao salvar, escolha <b>“Salvar vídeo(s)”</b> no menu do iPhone. Os takes ficam guardados aqui até você apagar, mesmo se fechar o app.</p>
+      <p class="note">O botão verde salva <b>um take por vez</b>: toque, escolha <b>“Salvar vídeo”</b> no menu do iPhone e repita até acabar. Os takes ficam guardados aqui até você apagar, mesmo se fechar o app. <b>Não apague o ícone do app</b>: isso apaga os takes junto.</p>
     </div>
   </div>
 </section>
@@ -1056,10 +1058,33 @@ async function loadTakes() {
   store.del('last');
   const ok = [];
   for (const m of metas) {
-    try { const f = await storedFile(m.name); if (f.size) { m.size = f.size; ok.push(m); } else removeStored(m.name); } catch (e) {}
+    try { const f = await storedFile(m.name); if (f.size) { m.size = f.size; ok.push(m); } } catch (e) {}
   }
+  // resgata qualquer vídeo guardado que tenha ficado fora da lista
+  try {
+    const d = await recDir();
+    for await (const [name, h] of d.entries()) {
+      if (h.kind !== 'file' || ok.find(m => m.name === name)) continue;
+      const f = await h.getFile(); if (!f.size) continue;
+      ok.push({ name, type: /\.webm$/.test(name) ? 'video/webm' : 'video/mp4', date: f.lastModified || Date.now(), dur: 0, size: f.size,
+        saved: false, complete: true, disk: true, recovered: true });
+    }
+  } catch (e) {}
+  ok.sort((a, b) => a.date - b.date);
   takes = ok; persistTakes();
+  // o app fechou no meio de um salvamento? (arquivo grande demais pro menu do iPhone)
+  const sh = store.get('sharing', null);
+  if (sh) {
+    store.del('sharing');
+    const m = takes.find(t => t.name === sh.name);
+    if (m) {
+      m.shareFail = true; persistTakes();
+      crashNote = '<div class="savewarn"><b>O iPhone fechou o app enquanto salvava o Take ' + (takes.indexOf(m) + 1) + '.</b> Seus takes continuam aqui. ' +
+        'Para esse take, use o botão <b>“Arquivos”</b> dele, depois abra o app Arquivos → Downloads → o vídeo → Compartilhar → “Salvar vídeo”.</div>';
+    }
+  }
 }
+let crashNote = '';
 
 async function openTakes() {
   closePanel(); setPlaying(false);
@@ -1082,17 +1107,23 @@ $('#btnTakesClose').onclick = closeTakes;
 function renderTakes() {
   const list = $('#takeList');
   const unsaved = takes.filter(t => !t.saved).length;
-  $('#btnSaveAll').textContent = unsaved ? 'Salvar ' + (unsaved > 1 ? unsaved + ' takes' : '1 take') + ' na Galeria' : 'Salvar tudo de novo';
+  const next = takes.findIndex(t => !t.saved);
+  $('#btnSaveAll').textContent = next >= 0 ? 'Salvar take ' + (next + 1) + ' na Galeria (' + (takes.length - unsaved + 1) + ' de ' + takes.length + ')' : 'Todos salvos ✓';
+  $('#btnSaveAll').disabled = next < 0;
   $('#btnSaveAll').hidden = !takes.length;
+  $('#saveNote').innerHTML = crashNote;
   $('#playerWrap').hidden = !takes.length;
   if (!takes.length) { list.innerHTML = '<div class="empty-takes">Nenhum take gravado ainda.</div>'; return; }
   list.innerHTML = takes.map((m, i) =>
     '<div class="take' + (m.name === selName ? ' on' : '') + '" data-n="' + esc(m.name) + '">' +
-      '<div class="t1"><b>Take ' + (i + 1) + '</b>' + (m.saved ? '<em>Salvo</em>' : '') + (m.complete ? '' : '<em class="w">Incompleto</em>') + '</div>' +
+      '<div class="t1"><b>Take ' + (i + 1) + '</b>' + (m.saved ? '<em>Salvo</em>' : m.downloaded ? '<em class="w">No app Arquivos</em>' : '') +
+        (m.shareFail ? '<em class="w">Use “Arquivos”</em>' : '') + (m.complete ? '' : '<em class="w">Incompleto</em>') + '</div>' +
       '<div class="t2">' + new Date(m.date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) +
         (m.dur ? ' · ' + fmtTime(m.dur) : '') + (m.vw || m.w ? ' · ' + resLabel(m.vw || m.w, m.vh || m.h) : '') + (m.fps ? ' ' + m.fps + 'fps' : '') +
         ' · ' + fmtBytes(m.size || 0) + '</div>' +
-      '<div class="t3"><button class="btn small" data-a="save">Salvar</button><button class="btn small" data-a="dl">Arquivos</button><button class="btn small red" data-a="del">Apagar</button></div>' +
+      '<div class="t3"><button class="btn small" data-a="save">Salvar</button><button class="btn small" data-a="dl">Arquivos</button>' +
+        (!m.saved && m.downloaded ? '<button class="btn small" data-a="mark">Já salvei</button>' : '') +
+        '<button class="btn small red" data-a="del">Apagar</button></div>' +
     '</div>').join('');
 }
 function selectTake(name) {
@@ -1130,7 +1161,10 @@ $('#takeList').addEventListener('click', async e => {
     const f = fileCache.get(m.name), u = URL.createObjectURL(f), link = document.createElement('a');
     link.href = u; link.download = m.name; document.body.appendChild(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(u), 60000);
-    m.saved = true; persistTakes(); renderTakes(); toast('Baixando para o app Arquivos → Downloads', 4500);
+    m.downloaded = true; persistTakes(); renderTakes();
+    toast('Enviando para o app Arquivos → Downloads. Lá, abra o vídeo → Compartilhar → “Salvar vídeo”. Depois marque “Já salvei” aqui.', 9000);
+  } else if (a.dataset.a === 'mark') {
+    m.saved = true; persistTakes(); renderTakes();
   } else if (a.dataset.a === 'del') {
     if (!m.saved && !confirm('Este take ainda não foi salvo na Galeria. Apagar mesmo?')) return;
     if (m.name === selName) { const v = $('#player'); v.pause(); v.removeAttribute('src'); v.load(); }
@@ -1141,23 +1175,28 @@ $('#takeList').addEventListener('click', async e => {
     renderTakes(); selectTake(selName);
   }
 });
+/* Salva UM take por vez: mandar vários vídeos grandes de uma vez faz o iPhone fechar o app. */
 $('#btnSaveAll').onclick = () => {
-  const unsaved = takes.filter(t => !t.saved);
-  shareFiles(unsaved.length ? unsaved : takes);
+  const next = takes.find(t => !t.saved);
+  if (next) { selectTake(next.name); shareFiles([next]); }
 };
 async function shareFiles(metas) {
-  const files = metas.map(m => fileCache.get(m.name)).filter(Boolean);
-  if (!files.length) return;
-  const data = { files };
-  if (navigator.canShare && navigator.canShare(data)) {
-    try {
-      await navigator.share(data);
-      metas.forEach(m => m.saved = true); persistTakes(); renderTakes();
-      toast('Pronto! Confira no app Fotos.');
-    } catch (e) { if (e.name !== 'AbortError') toast('Não abriu o menu de salvar (' + e.message + '). Use “Arquivos”.', 6000); }
-  } else {
-    toast('Este iOS não permite salvar direto. Use “Arquivos” e depois “Salvar vídeo”.', 7000);
-  }
+  const m = metas[0], f = m && fileCache.get(m.name);
+  if (!f) { toast('Não achei o arquivo deste take. Feche e abra o app de novo.', 6000); return; }
+  const data = { files: [f] };
+  let ok = false;
+  try { ok = !!(navigator.canShare && navigator.canShare(data)); } catch (e) {}
+  if (!ok) { toast('O iPhone recusou o menu de salvar para este arquivo. Use o botão “Arquivos” deste take.', 7000); return; }
+  store.set('sharing', { name: m.name, t: Date.now() });   // se o app fechar no meio, a gente avisa ao reabrir
+  try {
+    await navigator.share(data);
+    m.saved = true; m.shareFail = false; persistTakes(); renderTakes();
+    const left = takes.filter(t => !t.saved).length;
+    toast(left ? 'Salvo! Falta' + (left > 1 ? 'm ' + left + ' takes' : ' 1 take') + ': toque de novo no botão verde.' : 'Todos os takes salvos! Confira no app Fotos.', 5000);
+  } catch (e) {
+    if (e.name === 'AbortError') toast('Menu fechado sem salvar. Se ele nem abriu, use “Arquivos” neste take.', 6000);
+    else { m.shareFail = true; persistTakes(); renderTakes(); toast('Não deu pra abrir o menu (' + e.message + '). Use “Arquivos” neste take.', 7000); }
+  } finally { store.del('sharing'); }
 }
 
 async function updateSpaceNote() {
@@ -1231,7 +1270,10 @@ addEventListener('keydown', e => {
   try { await loadTakes(); } catch (e) {}
   updateTakesBtn();
   const start = () => { openCamera(); if (!S.script.trim()) openScript(); };
-  if (iOS && !installed && !sessionStorage.getItem('tp.skipInstall')) {
+  if (takes.some(t => !t.saved)) {
+    // tem take não salvo: abre direto na lista (a câmera só liga quando fechar)
+    await openTakes();
+  } else if (iOS && !installed && !sessionStorage.getItem('tp.skipInstall')) {
     // no Safari: mostra como instalar antes de pedir câmera
     $('#install').hidden = false;
     $('#installLater').onclick = () => { try { sessionStorage.setItem('tp.skipInstall', '1'); } catch (e) {} $('#install').hidden = true; start(); };
