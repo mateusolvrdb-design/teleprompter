@@ -222,6 +222,9 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 .take .t1 em.w{background:rgba(255,214,10,.15);color:var(--acc)}
 .take .t2{font-size:12.5px;color:var(--muted);margin:2px 0 8px;font-variant-numeric:tabular-nums}
 .take .t3{display:flex;gap:6px}
+.sendbox{background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.5);border-radius:14px;padding:12px;font-size:13.5px;line-height:1.5;margin-bottom:10px}
+.sendbox .bar{height:8px;border-radius:4px;background:rgba(255,255,255,.12);margin:8px 0 6px;overflow:hidden}
+.sendbox .bar i{display:block;height:100%;width:0;background:#0a84ff;transition:width .3s}
 .savewarn{background:rgba(255,214,10,.1);border:1px solid rgba(255,214,10,.45);border-radius:14px;padding:12px;font-size:13.5px;line-height:1.5;margin-bottom:10px}
 .empty-takes{color:var(--muted);text-align:center;padding:40px 10px}
 
@@ -384,6 +387,7 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 <section id="takes" class="sheet" hidden>
   <div class="ph">
     <h1>Takes</h1>
+    <button class="btn" id="btnSendPc">Enviar pro PC</button>
     <button class="btn green" id="btnSaveAll">Salvar na Galeria</button>
     <button class="btn" id="btnTakesClose">Fechar</button>
   </div>
@@ -393,6 +397,12 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
       <div id="playerInfo"></div>
     </div>
     <div>
+      <div id="sendBox" class="sendbox" hidden>
+        <b id="sendTitle">Enviando pro computador…</b>
+        <div class="bar"><i id="sendBar"></i></div>
+        <div id="sendTxt"></div>
+        <div style="margin-top:8px"><button class="btn small" id="sendStop">Parar envio</button></div>
+      </div>
       <div id="saveNote"></div>
       <div id="takeList"></div>
       <p class="note">O botão verde salva <b>um take por vez</b>: toque, escolha <b>“Salvar vídeo”</b> no menu do iPhone e repita até acabar. Os takes ficam guardados aqui até você apagar, mesmo se fechar o app. <b>Não apague o ícone do app</b>: isso apaga os takes junto.</p>
@@ -1116,7 +1126,7 @@ function renderTakes() {
   if (!takes.length) { list.innerHTML = '<div class="empty-takes">Nenhum take gravado ainda.</div>'; return; }
   list.innerHTML = takes.map((m, i) =>
     '<div class="take' + (m.name === selName ? ' on' : '') + '" data-n="' + esc(m.name) + '">' +
-      '<div class="t1"><b>Take ' + (i + 1) + '</b>' + (m.saved ? '<em>Salvo</em>' : m.downloaded ? '<em class="w">No app Arquivos</em>' : '') +
+      '<div class="t1"><b>Take ' + (i + 1) + '</b>' + (m.sentPc ? '<em>No PC</em>' : '') + (m.saved ? '<em>Salvo</em>' : m.downloaded ? '<em class="w">No app Arquivos</em>' : '') +
         (m.shareFail ? '<em class="w">Use “Arquivos”</em>' : '') + (m.complete ? '' : '<em class="w">Incompleto</em>') + '</div>' +
       '<div class="t2">' + new Date(m.date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) +
         (m.dur ? ' · ' + fmtTime(m.dur) : '') + (m.vw || m.w ? ' · ' + resLabel(m.vw || m.w, m.vh || m.h) : '') + (m.fps ? ' ' + m.fps + 'fps' : '') +
@@ -1175,6 +1185,67 @@ $('#takeList').addEventListener('click', async e => {
     renderTakes(); selectTake(selName);
   }
 });
+/* ---------- Enviar pro computador (em pedaços, retoma se cair) ---------- */
+let sending = false, sendAbort = false;
+$('#btnSendPc').onclick = async () => {
+  if (sending) return;
+  let addr = prompt('Cole o endereço que aparece no computador:', store.get('pc', ''));
+  if (!addr) return;
+  addr = addr.trim().replace(/\s+/g, '').replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(addr)) addr = 'https://' + addr;
+  store.set('pc', addr);
+  try {
+    const r = await fetch(addr + '/ping', { cache: 'no-store' });
+    if (!r.ok) throw new Error('código ' + r.status);
+  } catch (e) { toast('Não achei o computador nesse endereço (' + e.message + '). Confira o endereço.', 7000); return; }
+  sendAll(addr);
+};
+$('#sendStop').onclick = () => { sendAbort = true; };
+async function sendAll(addr) {
+  sending = true; sendAbort = false; keepAwake();
+  const box = $('#sendBox'); box.hidden = false;
+  const list = takes.slice();
+  const total = list.reduce((s, m) => s + (fileCache.get(m.name) ? fileCache.get(m.name).size : 0), 0);
+  let doneBytes = 0, ok = 0;
+  const CH = 16 * 1024 * 1024;
+  const show = (i, cur) => {
+    const pct = total ? (doneBytes + cur) / total * 100 : 0;
+    $('#sendTitle').textContent = 'Enviando pro computador… take ' + (i + 1) + ' de ' + list.length;
+    $('#sendBar').style.width = pct.toFixed(1) + '%';
+    $('#sendTxt').textContent = fmtBytes(doneBytes + cur) + ' de ' + fmtBytes(total) + ' · ' + pct.toFixed(0) + '% · deixe o app aberto e a tela ligada';
+  };
+  const call = async (url, opt) => {
+    for (let tries = 0; ; tries++) {
+      try { const r = await fetch(url, Object.assign({ cache: 'no-store' }, opt)); const j = await r.json().catch(() => ({})); return { status: r.status, j }; }
+      catch (e) { if (tries >= 8 || sendAbort) throw e; await wait(1500 * (tries + 1)); }
+    }
+  };
+  try {
+    for (let i = 0; i < list.length && !sendAbort; i++) {
+      const m = list[i], f = fileCache.get(m.name); if (!f) continue;
+      const q = '?name=' + encodeURIComponent(m.name);
+      let { j } = await call(addr + '/status' + q);
+      let off = j.done && j.size === f.size ? f.size : (j.done ? 0 : (j.size || 0));
+      if (j.done && j.size === f.size) { m.sentPc = true; persistTakes(); doneBytes += f.size; ok++; continue; }
+      if (off > f.size) off = 0;
+      while (off < f.size && !sendAbort) {
+        show(i, off);
+        const r = await call(addr + '/up' + q + '&offset=' + off, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: f.slice(off, Math.min(f.size, off + CH)) });
+        if (r.status === 200 || r.status === 409) off = r.j.size;
+        else await wait(1500);
+      }
+      if (sendAbort) break;
+      const d = await call(addr + '/done' + q + '&size=' + f.size, { method: 'POST' });
+      if (d.status === 200) { m.sentPc = true; persistTakes(); renderTakes(); ok++; }
+      doneBytes += f.size; show(i, 0);
+    }
+    $('#sendTitle').textContent = sendAbort ? 'Envio parado. Toque em “Enviar pro PC” para continuar de onde parou.' : ok + ' de ' + list.length + ' takes no computador ✓';
+  } catch (e) {
+    $('#sendTitle').textContent = 'A conexão caiu (' + e.message + '). Toque em “Enviar pro PC” de novo: continua de onde parou.';
+  }
+  sending = false; renderTakes();
+}
+
 /* Salva UM take por vez: mandar vários vídeos grandes de uma vez faz o iPhone fechar o app. */
 $('#btnSaveAll').onclick = () => {
   const next = takes.find(t => !t.saved);
